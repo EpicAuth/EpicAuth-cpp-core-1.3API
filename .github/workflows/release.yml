@@ -1,0 +1,49 @@
+name: Release EpicAuth Core
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          msbuild .\epicauth_core.sln `
+            /t:Build `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /m
+
+      - name: Find library
+        shell: pwsh
+        run: |
+          $lib = Get-ChildItem -Path . -Recurse -Filter "EpicAuth_core_x64.lib" |
+            Select-Object -First 1
+
+          if (-not $lib) {
+            Write-Error "EpicAuth_core_x64.lib was not found."
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force release-output | Out-Null
+          Copy-Item $lib.FullName release-output\EpicAuth_core_x64.lib
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-output/EpicAuth_core_x64.lib
+          generate_release_notes: true

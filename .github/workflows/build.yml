@@ -38,8 +38,6 @@ jobs:
             exit 1
           }
 
-          Write-Host "Found: $($lib.FullName)"
-
           New-Item -ItemType Directory -Force build-output | Out-Null
           Copy-Item $lib.FullName build-output\EpicAuth_core_x64.lib
 
