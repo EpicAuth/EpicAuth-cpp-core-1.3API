@@ -1,0 +1,51 @@
+name: Build EpicAuth_core_x64.lib
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release x64
+        shell: pwsh
+        run: |
+          msbuild .\epicauth_core.sln `
+            /t:Build `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /m
+
+      - name: Find library
+        shell: pwsh
+        run: |
+          $lib = Get-ChildItem -Path . -Recurse -Filter "EpicAuth_core_x64.lib" |
+            Select-Object -First 1
+
+          if (-not $lib) {
+            Write-Error "EpicAuth_core_x64.lib was not found."
+            exit 1
+          }
+
+          Write-Host "Found: $($lib.FullName)"
+
+          New-Item -ItemType Directory -Force build-output | Out-Null
+          Copy-Item $lib.FullName build-output\EpicAuth_core_x64.lib
+
+      - name: Upload library
+        uses: actions/upload-artifact@v4
+        with:
+          name: EpicAuth_core_x64.lib
+          path: build-output/EpicAuth_core_x64.lib
+          if-no-files-found: error

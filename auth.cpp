@@ -1894,26 +1894,52 @@ void checkRegistry() {
 
 std::string checksum()
 {
-    auto exec = [&](const char* cmd) -> std::string
-        {
-            uint16_t line = -1;
-            std::array<char, 128> buffer;
-            std::string result;
-            std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd, "r"), _pclose);
-            if (!pipe) {
-                throw std::runtime_error(XorStr("popen() failed!"));
-            }
+    char rawPathName[MAX_PATH]{};
+    GetModuleFileNameA(nullptr, rawPathName, MAX_PATH);
 
-            while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-                result = buffer.data();
-            }
-            return result;
-        };
+    std::string cmd =
+        "cmd.exe /C certutil -hashfile \"" +
+        std::string(rawPathName) +
+        "\" MD5 | find /i /v \"md5\" | find /i /v \"certutil\"";
 
-    char rawPathName[MAX_PATH];
-    GetModuleFileNameA(NULL, rawPathName, MAX_PATH);
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+    HANDLE outRead, outWrite;
 
-    return exec(("certutil -hashfile \"" + std::string(rawPathName) + XorStr("\" MD5 | find /i /v \"md5\" | find /i /v \"certutil\"")).c_str());
+    CreatePipe(&outRead, &outWrite, &sa, 0);
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.wShowWindow = SW_HIDE;
+    si.hStdOutput = outWrite;
+    si.hStdError = outWrite;
+
+    if (!CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, TRUE,
+        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+    {
+        CloseHandle(outRead);
+        CloseHandle(outWrite);
+        return {};
+    }
+
+    CloseHandle(outWrite);
+
+    std::string result;
+    char buffer[128];
+    DWORD read;
+
+    while (ReadFile(outRead, buffer, sizeof(buffer), &read, nullptr) && read)
+        result.append(buffer, read);
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    CloseHandle(outRead);
+
+    return result;
 }
 
 std::string getPath() {
